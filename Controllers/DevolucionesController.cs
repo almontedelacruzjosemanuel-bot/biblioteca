@@ -94,7 +94,7 @@ namespace Biblioteca.Api.Controllers
             catch
             {
                 transaction.Rollback();
-                return StatusCode(500, "Error al registrar la devolución");
+                return StatusCode(500, $"Error: {ex.Message} | Detalle: {ex.InnerException?.Message}");
             }
         }
     }
