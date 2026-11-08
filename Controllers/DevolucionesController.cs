@@ -1,4 +1,3 @@
-
 using Biblioteca.Api.Data;
 using Biblioteca.Api.Models;
 using Dapper;
@@ -53,6 +52,7 @@ namespace Biblioteca.Api.Controllers
 
             try
             {
+                // 1. Obtener el Libroid asociado a ese Prestamoid
                 var libroid = await connection.QueryFirstOrDefaultAsync<int?>(
                     "SELECT Libroid FROM Prestamos WHERE Prestamoid = @Prestamoid",
                     new { devolucion.Prestamoid },
@@ -61,9 +61,10 @@ namespace Biblioteca.Api.Controllers
                 if (libroid == null)
                 {
                     transaction.Rollback();
-                    return NotFound("Préstamo no encontrado");
+                    return NotFound("El préstamo especificado no existe");
                 }
 
+                // 2. Verificar si el préstamo ya fue devuelto anteriormente
                 int existe = await connection.ExecuteScalarAsync<int>(
                     "SELECT COUNT(*) FROM Devoluciones WHERE Prestamoid = @Prestamoid",
                     new { devolucion.Prestamoid },
@@ -72,30 +73,49 @@ namespace Biblioteca.Api.Controllers
                 if (existe > 0)
                 {
                     transaction.Rollback();
-                    return BadRequest("Este préstamo ya fue devuelto");
+                    return BadRequest("Este préstamo ya cuenta con una devolución registrada");
                 }
 
-                var sql = @"INSERT INTO Devoluciones
-                            (Prestamoid, Fechadevolucion, Observaciones)
-                            VALUES
-                            (@Prestamoid, @Fechadevolucion, @Observaciones)";
+                // 3. Insertar la devolución
+                var sqlInsert = @"INSERT INTO Devoluciones
+                                (Prestamoid, Fechadevolucion, Observaciones)
+                                VALUES
+                                (@Prestamoid, @Fechadevolucion, @Observaciones)";
 
-                await connection.ExecuteAsync(sql, devolucion, transaction);
+                await connection.ExecuteAsync(sqlInsert, devolucion, transaction);
 
-                await connection.ExecuteAsync(
-                    "UPDATE Libros SET Cantidaddisponible = Cantidaddisponible + 1 WHERE Libroid = @libroid",
-                    new { libroid },
-                    transaction);
+                // 4. Devolver la unidad al stock del libro (+1)
+                var sqlUpdateLibro = @"UPDATE Libros 
+                                       SET Cantidaddisponible = Cantidaddisponible + 1 
+                                       WHERE Libroid = @libroid";
 
+                await connection.ExecuteAsync(sqlUpdateLibro, new { libroid }, transaction);
+
+                // 5. Confirmar transacción
                 transaction.Commit();
 
                 return Ok("Devolución registrada correctamente");
             }
-            catch
+            catch (Exception ex)
             {
                 transaction.Rollback();
                 return StatusCode(500, $"Error: {ex.Message} | Detalle: {ex.InnerException?.Message}");
             }
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            using var connection = _db.CreateConnection();
+
+            int filas = await connection.ExecuteAsync(
+                "DELETE FROM Devoluciones WHERE Devolucionid = @id",
+                new { id });
+
+            if (filas == 0)
+                return NotFound("Devolución no encontrada");
+
+            return Ok("Devolución eliminada correctamente");
         }
     }
 }
