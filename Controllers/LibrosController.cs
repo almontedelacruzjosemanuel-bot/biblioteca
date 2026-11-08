@@ -1,4 +1,3 @@
-
 using Biblioteca.Api.Data;
 using Biblioteca.Api.Models;
 using Dapper;
@@ -21,10 +20,7 @@ namespace Biblioteca.Api.Controllers
         public async Task<IActionResult> Get()
         {
             using var connection = _db.CreateConnection();
-
-            var libros = await connection.QueryAsync<Libro>(
-                "SELECT * FROM Libros");
-
+            var libros = await connection.QueryAsync<Libro>("SELECT * FROM Libros");
             return Ok(libros);
         }
 
@@ -32,7 +28,6 @@ namespace Biblioteca.Api.Controllers
         public async Task<IActionResult> GetById(int id)
         {
             using var connection = _db.CreateConnection();
-
             var libro = await connection.QueryFirstOrDefaultAsync<Libro>(
                 "SELECT * FROM Libros WHERE Libroid = @id",
                 new { id });
@@ -46,6 +41,11 @@ namespace Biblioteca.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> Create(Libro libro)
         {
+            if (libro.Cantidaddisponible > libro.Cantidadtotal || libro.Cantidaddisponible < 0)
+            {
+                return BadRequest("La cantidad disponible no puede ser mayor a la cantidad total ni menor a cero.");
+            }
+
             using var connection = _db.CreateConnection();
 
             var sql = @"INSERT INTO Libros
@@ -61,8 +61,12 @@ namespace Biblioteca.Api.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, Libro libro)
         {
-            using var connection = _db.CreateConnection();
+            if (libro.Cantidaddisponible > libro.Cantidadtotal || libro.Cantidaddisponible < 0)
+            {
+                return BadRequest("La cantidad disponible no es válida respecto a la cantidad total.");
+            }
 
+            using var connection = _db.CreateConnection();
             libro.Libroid = id;
 
             var sql = @"UPDATE Libros
